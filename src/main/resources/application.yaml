@@ -1,3 +1,9 @@
 spring:
   application:
     name: github-battle
+
+
+github:
+  token: ${GITHUB_TOKEN:missing-token}
+server:
+  port: 8081
