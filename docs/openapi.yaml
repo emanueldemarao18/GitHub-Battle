@@ -1,0 +1,186 @@
+openapi: 3.1.0
+info:
+  title: GitHub Battle API
+  version: 0.0.1
+  description: Stateless GitHub profile comparisons. Contribution metrics require a server-side GitHub token.
+servers:
+  - url: http://localhost:8081
+tags:
+  - name: Battles
+paths:
+  /api/battles:
+    get:
+      operationId: compareProfiles
+      tags: [Battles]
+      summary: Compare two distinct personal GitHub accounts
+      description: Returns live scores. Shared URLs rerun the comparison and do not preserve a snapshot.
+      parameters:
+        - name: left
+          in: query
+          required: true
+          description: First username. Surrounding whitespace is trimmed; names are case insensitive.
+          schema:
+            type: string
+          example: octocat
+        - name: right
+          in: query
+          required: true
+          description: Second username, different from the first. Same normalization as left.
+          schema:
+            type: string
+          example: torvalds
+      responses:
+        '200':
+          description: Successful comparison
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Battle'
+        '400':
+          description: Missing or invalid username, duplicate users, or an organization
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: GitHub user not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Repository page limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: GitHub network failure, invalid credentials, or invalid upstream data
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: GitHub rate limit or access restriction
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  schemas:
+    Battle:
+      type: object
+      required: [left, right, categories, leftScore, rightScore, winner, tie, notes, sharePath]
+      properties:
+        left:
+          $ref: '#/components/schemas/Profile'
+        right:
+          $ref: '#/components/schemas/Profile'
+        categories:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/Category'
+        leftScore:
+          type: number
+          minimum: 0
+          maximum: 100
+        rightScore:
+          type: number
+          minimum: 0
+          maximum: 100
+        winner:
+          type: [string, 'null']
+          description: Winning username, or null when displayed scores tie
+        tie:
+          type: boolean
+        notes:
+          type: array
+          items:
+            type: string
+        sharePath:
+          type: string
+          example: /api/battles?left=octocat&right=torvalds
+    Profile:
+      type: object
+      required: [username, name, avatarUrl, profileUrl, followers, repositories, stars, commits, longestStreak, fetchedAt]
+      properties:
+        username:
+          type: string
+        name:
+          type: [string, 'null']
+        avatarUrl:
+          type: string
+          format: uri
+        profileUrl:
+          type: string
+          format: uri
+        followers:
+          type: integer
+          format: int64
+          minimum: 0
+        repositories:
+          type: integer
+          format: int64
+          minimum: 0
+        stars:
+          type: integer
+          format: int64
+          minimum: 0
+        commits:
+          type: [integer, 'null']
+          format: int64
+          minimum: 0
+          description: Past-year contribution-counted commits; null without a server token
+        longestStreak:
+          type: [integer, 'null']
+          format: int64
+          minimum: 0
+          description: Longest consecutive active days in the past-year calendar; null without a server token
+        fetchedAt:
+          type: string
+          format: date-time
+    Category:
+      type: object
+      required: [name, weight, leftValue, rightValue, available, leftPoints, rightPoints]
+      properties:
+        name:
+          type: string
+          enum: [followers, repositories, stars, commits, longestStreak]
+        weight:
+          type: integer
+          description: Base weight before normalization across available categories
+        leftValue:
+          type: [integer, 'null']
+          format: int64
+          minimum: 0
+        rightValue:
+          type: [integer, 'null']
+          format: int64
+          minimum: 0
+        available:
+          type: boolean
+          description: True only when both players have a value
+        leftPoints:
+          type: [number, 'null']
+          description: Points out of the category weight; null when unavailable
+        rightPoints:
+          type: [number, 'null']
+          description: Points out of the category weight; null when unavailable
+    Problem:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type:
+          type: string
+          format: uri
+          example: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
