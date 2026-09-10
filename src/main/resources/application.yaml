@@ -1,9 +1,11 @@
 spring:
   application:
     name: github-battle
-
-
 github:
-  token: ${GITHUB_TOKEN:missing-token}
+  token: ${GITHUB_TOKEN:}
+  base-url: https://api.github.com
+  max-repository-pages: 100
+  connect-timeout: 5s
+  read-timeout: 15s
 server:
-  port: 8081
+  port: ${PORT:8081}
