@@ -7,7 +7,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(GithubProperties.class)
+@EnableConfigurationProperties({GithubProperties.class, BattleProperties.class})
 public class GithubConfiguration {
     @Bean
     public RestClient githubRestClient(GithubProperties properties) {
@@ -19,6 +19,14 @@ public class GithubConfiguration {
                 .defaultHeader("X-GitHub-Api-Version", "2026-03-10")
                 .defaultHeader("User-Agent", "github-battle");
         if (!properties.token().isBlank()) builder.defaultHeader("Authorization", "Bearer " + properties.token());
+        builder.requestInterceptor((request, body, execution) -> {
+            com.github.battle.app.service.ComparisonDeadline.remainingNanos();
+            var response = execution.execute(request, body);
+            org.slf4j.LoggerFactory.getLogger(GithubConfiguration.class).info(
+                    "github_response status={} quota_remaining={} quota_reset={}", response.getStatusCode().value(),
+                    response.getHeaders().getFirst("X-RateLimit-Remaining"), response.getHeaders().getFirst("X-RateLimit-Reset"));
+            return response;
+        });
         return builder.build();
     }
 }
