@@ -31,7 +31,7 @@ Verified against provider documentation on September 10, 2026. Render Free servi
 2. Create a Render Docker web service from the backend repository and select its Free instance type.
 3. Set `GITHUB_TOKEN` in the backend service's environment if contribution metrics are needed. The app already reads the hosting platform's `PORT` environment variable.
 4. Deploy the separate frontend on Netlify. Configure its API base URL to use the backend's public HTTPS address, not `localhost`.
-5. Add a CORS allowlist in the backend for the exact deployed frontend origin. CORS is not enabled in the current backend; it does not affect Postman or server-to-server requests.
+5. Add a CORS allowlist in the backend for the exact deployed frontend origin. Set FRONTEND_ORIGIN to that exact origin, with no trailing slash; it does not affect Postman or server-to-server requests.
 6. Verify a comparison from the deployed browser frontend, including the backend wake-up/loading and error states.
 
 Example future URL (placeholder, not an existing deployment):
@@ -43,3 +43,13 @@ https://your-backend.onrender.com/api/battles?left=octocat&right=torvalds
 The frontend needs only the backend URL. `GITHUB_TOKEN` stays on the Java server and must never be put into frontend source or a public build-time variable. The backend currently needs no database; storing permanent battle results would require a separate persistence design.
 
 No cloud service has been created or deployed by adding this document.
+
+## Operational verification
+
+Set `FRONTEND_ORIGIN` and keep `GITHUB_TOKEN` in host environment settings. Configure the host health check as `/actuator/health/readiness`; use `/actuator/health/liveness` for process liveness. These probes intentionally do not depend on GitHub availability. Other Actuator endpoints are not exposed.
+
+After deploying, verify the health endpoint returns 200, then check a comparison, a repeated comparison (same fetchedAt while cached), and a request from the configured browser origin. Verify an unapproved browser origin receives no CORS permission. Review `battle_completed` and `github_response` logs for latency, upstream failures, and quota exhaustion. Check 429/503/504 handling with local fixtures rather than load-testing the public GitHub API.
+
+Defaults target a single-instance portfolio demo. Cache, the 60-request token bucket, eight-comparison admission cap, and four-load upstream cap are local to each instance. Apply aggregate/per-client limits at a trusted reverse proxy before scaling. Do not trust arbitrary forwarded IP headers for rate limiting.
+
+Rollback by redeploying the previous verified JAR and its environment configuration, then checking readiness and a comparison. There is no data migration; restarting discards the in-memory cache. No cloud resources were created or changed by this implementation.

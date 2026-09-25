@@ -5,6 +5,9 @@ import com.github.battle.app.dto.CategoryResponse;
 import com.github.battle.app.exception.BattleException;
 import com.github.battle.app.model.Profile;
 
+import com.github.battle.app.config.BattleProperties;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
@@ -15,13 +18,24 @@ import org.springframework.stereotype.Service;
 @Service
 public class BattleService {
     private final ProfileProvider github;
+    private final Duration timeout;
 
-    public BattleService(ProfileProvider github) { this.github = github; }
+    public BattleService(ProfileProvider github) { this.github = github; this.timeout = Duration.ofSeconds(30); }
+
+    @Autowired
+    public BattleService(ProfileProvider github, BattleProperties properties) {
+        this.github = github;
+        this.timeout = properties.timeout();
+    }
 
     public BattleResponse compare(String first, String second) {
         String left = username(first), right = username(second);
         if (left.equals(right)) throw new BattleException(HttpStatus.BAD_REQUEST, "Choose two different GitHub users.");
-        return score(github.fetch(left), github.fetch(right));
+        try (var deadline = ComparisonDeadline.start(timeout)) {
+            var response = score(github.fetch(left), github.fetch(right));
+            ComparisonDeadline.remainingNanos();
+            return response;
+        }
     }
 
     static String username(String value) {

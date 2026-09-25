@@ -9,3 +9,20 @@ github:
   read-timeout: 15s
 server:
   port: ${PORT:8081}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+battle:
+  timeout: 30s
+  cache-ttl: 5m
+  cache-size: 1000
+  upstream-workers: 4
+  requests-per-minute: 60
+  allowed-origin: ${FRONTEND_ORIGIN:}
