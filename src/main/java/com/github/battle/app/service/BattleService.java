@@ -5,6 +5,9 @@ import com.github.battle.app.dto.CategoryResponse;
 import com.github.battle.app.exception.BattleException;
 import com.github.battle.app.model.Profile;
 
+import com.github.battle.app.config.BattleProperties;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
@@ -15,12 +18,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class BattleService {
     private final ProfileProvider github;
-    private final java.time.Duration timeout;
+    private final Duration timeout;
 
-    public BattleService(ProfileProvider github) { this.github = github; this.timeout = java.time.Duration.ofSeconds(30); }
+    public BattleService(ProfileProvider github) { this.github = github; this.timeout = Duration.ofSeconds(30); }
 
-    @org.springframework.beans.factory.annotation.Autowired
-    public BattleService(ProfileProvider github, com.github.battle.app.config.BattleProperties properties) {
+    @Autowired
+    public BattleService(ProfileProvider github, BattleProperties properties) {
         this.github = github;
         this.timeout = properties.timeout();
     }

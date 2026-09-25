@@ -80,7 +80,11 @@ Contribution metrics follow GitHub's contribution rules; they are not lifetime c
 
 Spring configuration settings can also be supplied as command-line arguments, for example `--github.read-timeout=10s`. Timeouts must be between 1ms and 60s.
 
-Stars are fetched with 100 repositories per page. Accounts exceeding the page limit fail explicitly instead of receiving a truncated score. There is no automatic retry or persistent cache, so large profiles take longer and repeated comparisons consume GitHub quota. Timeouts apply per upstream call, not to the whole comparison. Restrict traffic at your reverse proxy before exposing a deployment to untrusted traffic. Cross-origin browser requests are not enabled yet; configure the chosen frontend origin when that project is connected.
+Stars are fetched with 100 repositories per page. Accounts exceeding the page limit fail explicitly instead of receiving a truncated score. Successful profiles are cached in memory for five minutes (up to 1,000 profiles), retaining their original fetch timestamps. Concurrent requests for the same profile share one load; errors are not cached. Both profile waits share a 30-second comparison deadline (504 on expiry). Up to four upstream loads run concurrently with no queue; excess distinct loads return 503. A timed-out caller does not cancel shared work: an in-progress HTTP call may finish under its existing socket timeouts, but no further calls start after the load budget expires. There are no automatic retries.
+
+Each instance admits a burst of 60 comparison requests and replenishes one token per second, with a maximum of eight simultaneous comparisons. Excess traffic returns 429 with Retry-After; concurrent capacity exhaustion returns 503. These controls and the cache are per process, not distributed. Keep reverse-proxy traffic limits for public deployments, particularly when scaling to multiple instances. Without a GitHub token, even this request budget can exceed GitHub quota.
+
+Set FRONTEND_ORIGIN to the exact browser origin (for example https://your-frontend.example, without a trailing slash) to enable CORS. It defaults to disabled; credentials and wildcard origins are not enabled.
 
 ## Errors
 
@@ -91,8 +95,10 @@ Failures use `application/problem+json`, with `status`, `title`, and a readable 
 | 400 | Missing/invalid names, same user, or an organization |
 | 404 | GitHub user not found |
 | 422 | Repository lookup limit exceeded |
+| 429 | Per-instance request budget exceeded; Retry-After specifies a suggested delay |
 | 502 | Invalid server token, unavailable/invalid upstream data, or network failure |
-| 503 | GitHub rate limit or access restriction |
+| 503 | GitHub rate limit, access restriction, or server concurrency capacity exhausted |
+| 504 | Comparison deadline exceeded |
 
 ## Test and package
 
@@ -126,3 +132,20 @@ Only the Spring Boot entry point belongs directly in the root package. Tests mir
 ## License
 
 [MIT](LICENSE), using the [Open Source Initiative license text](https://opensource.org/license/mit).
+
+## Operational settings
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `battle.timeout` | `30s` | Total comparison wait budget |
+| `battle.cache-ttl` | `5m` | Successful profile lifetime |
+| `battle.cache-size` | `1000` | Maximum cached profiles |
+| `battle.upstream-workers` | `4` | Maximum concurrent GitHub profile loads |
+| `battle.requests-per-minute` | `60` | Per-instance token bucket capacity and refill per minute |
+| `FRONTEND_ORIGIN` | empty | Exact allowed browser origin |
+
+`GET /actuator/health`, `/actuator/health/liveness`, and `/actuator/health/readiness` expose status only. Probes do not call GitHub or spend quota. Other management endpoints remain unexposed. Health means the application is running, not that GitHub is available.
+
+Logs report comparison status and duration plus upstream HTTP status and remaining/reset quota headers. They omit usernames, URLs, request bodies, and authorization headers. Actuator also records standard HTTP server metrics internally; metrics are not publicly exposed. Weekly Dependabot PRs cover Maven and GitHub Actions updates. A dependency-review workflow checks PR dependency changes for high/critical advisories; it is not a full runtime security audit.
+
+Planning assumption: a read-only portfolio demo with peak demand around one request/second, confirmed by the owner. This is not a measured capacity or availability guarantee. No persistent user data is stored; cache loss only requires refetching profiles. Validate latency and recovery time on the selected host before assigning production SLOs.

@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "github.token=")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"github.token=", "battle.allowed-origin=https://frontend.example"})
 class BattleApiIntegrationTests {
     @Value("${local.server.port}")
     private int port;
@@ -43,4 +43,20 @@ class BattleApiIntegrationTests {
         assertThat(error.headers().firstValue("Content-Type")).hasValue("application/problem+json");
         assertThat(new JsonMapper().readTree(error.body()).path("detail").asText()).contains("Both 'left' and 'right'");
     }
-}
+    @Test
+    void corsAllowsOnlyConfiguredOriginIncludingErrorResponses() throws Exception {
+        var client = HttpClient.newHttpClient();
+        var endpoint = URI.create("http://localhost:" + port + "/api/battles");
+        var allowed = client.send(HttpRequest.newBuilder(endpoint).header("Origin", "https://frontend.example").build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(allowed.statusCode()).isEqualTo(400);
+        assertThat(allowed.headers().firstValue("Access-Control-Allow-Origin")).hasValue("https://frontend.example");
+        var denied = client.send(HttpRequest.newBuilder(endpoint).header("Origin", "https://untrusted.example").build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(denied.statusCode()).isEqualTo(403);
+        assertThat(denied.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
+        var preflight = client.send(HttpRequest.newBuilder(endpoint).method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+                .header("Origin", "https://frontend.example").header("Access-Control-Request-Method", "GET").build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(preflight.statusCode()).isEqualTo(200);
+    }}
